@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Voltage Plot</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/moment@2.29.4/moment.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-moment@1.0.0"></script>
+<style>
+    html, body {
+    margin: 0;
+    padding: 0;
+    height: 100%;
+    }
+
+    body {
+    display: flex;
+    flex-direction: column;
+    font-family: Arial, sans-serif;
+    height: 100vh;
+    overflow: hidden;
+    }
+
+    h1 {
+    margin: 10px 20px;
+    flex: 0 0 auto;
+    }
+
+    #controls {
+    margin: 0 20px 10px 20px;
+    flex: 0 0 auto;
+    }
+
+    #chartContainer {
+    flex: 1 1 auto;
+    padding: 0 20px 20px 20px;
+    box-sizing: border-box;
+    position: relative;
+    min-height: 300px; /* Make sure chart has enough height for axes */
+    }
+
+    canvas {
+    width: 100% !important;
+    height: 100% !important;
+    display: block;
+    }
+    </style>
+    </head>
+    <body>
+    <h1>Voltage on the moppe battery</h1>
+    <div id="controls">
+    <label><input type="checkbox" id="lastHourCheckbox" /> Show last hour only</label>
+    <label><input type="checkbox" id="last10MinCheckbox" /> Show last 10 minutes only</label>
+    </div>
+    <div id="chartContainer">
+    <canvas id="myChart"></canvas>
+    </div>
+
+    <script>
+    const ctx = document.getElementById('myChart').getContext('2d');
+    const rawDatasets = {{ datasets|safe }};
+    let chart = null;
+
+    function processDatasets(datasets, filterDurationMs) {
+        const now = Date.now();
+        const minTime = filterDurationMs ? (now - filterDurationMs) : null;
+
+        return datasets.map(ds => {
+        let data = ds.data.map(point => ({
+            x: (point.x instanceof Date) ? point.x : new Date(point.x),
+            y: point.y
+        }));
+
+        if (minTime !== null) {
+            data = data.filter(pt => pt.x.getTime() >= minTime && pt.x.getTime() <= now);
+        }
+
+        return {
+            ...ds,
+            data: data,
+            showLine: data.length > 1,
+            pointRadius: data.length <= 2 ? 5 : 2,
+        };
+        }).filter(ds => ds.data.length > 0);
+    }
+
+    function renderChart(filterDurationMs = null) {
+        const processedDatasets = processDatasets(rawDatasets, filterDurationMs);
+
+        if (processedDatasets.length === 0) {
+        if (chart) {
+            chart.destroy();
+            chart = null;
+        }
+        if (!document.getElementById('noDataMessage')) {
+            const msg = document.createElement('p');
+            msg.id = 'noDataMessage';
+            msg.style.color = 'red';
+            msg.style.margin = '20px';
+            msg.textContent = 'No data to display';
+            document.getElementById('chartContainer').appendChild(msg);
+        }
+        return;
+        } else {
+        const oldMsg = document.getElementById('noDataMessage');
+        if (oldMsg) oldMsg.remove();
+        }
+
+        if (chart) {
+        chart.destroy();
+        }
+
+        const now = Date.now();
+        const xAxisOptions = {
+        type: 'time',
+        time: {
+            tooltipFormat: 'll HH:mm',
+            displayFormats: {
+            second: 'HH:mm:ss',
+            minute: 'HH:mm',
+            hour: 'HH:mm'
+            }
+        },
+        title: {
+            display: true,
+            text: 'Timestamp'
+        },
+        ticks: {
+            autoSkip: true,
+            maxRotation: 45,
+            minRotation: 30,
+            maxTicksLimit: 10,
+        },
+        grid: {
+            drawOnChartArea: true
+        }
+        };
+
+        if (filterDurationMs !== null) {
+        xAxisOptions.min = now - filterDurationMs;
+        xAxisOptions.max = now;
+        }
+
+        chart = new Chart(ctx, {
+        type: 'line',
+        data: {
+            datasets: processedDatasets
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            parsing: false,
+            scales: {
+            x: xAxisOptions,
+            y: {
+                title: {
+                display: true,
+                text: 'Voltage (V)'
+                },
+                beginAtZero: false
+            }
+            },
+            elements: {
+            point: {
+                radius: 2
+            }
+            },
+            plugins: {
+            legend: {
+                display: true
+            }
+            }
+        }
+        });
+    }
+
+    const lastHourCheckbox = document.getElementById('lastHourCheckbox');
+    const last10MinCheckbox = document.getElementById('last10MinCheckbox');
+
+    function handleCheckboxChange() {
+        if (lastHourCheckbox.checked && last10MinCheckbox.checked) {
+        if (this === lastHourCheckbox) {
+            last10MinCheckbox.checked = false;
+        } else {
+            lastHourCheckbox.checked = false;
+        }
+        }
+
+        if (lastHourCheckbox.checked) {
+        renderChart(60 * 60 * 1000);
+        } else if (last10MinCheckbox.checked) {
+        renderChart(10 * 60 * 1000);
+        } else {
+        renderChart(null);
+        }
+    }
+
+    lastHourCheckbox.addEventListener('change', handleCheckboxChange);
+    last10MinCheckbox.addEventListener('change', handleCheckboxChange);
+
+    renderChart(null);
+    </script>
+</body>
+</html>
